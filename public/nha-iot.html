@@ -227,6 +227,31 @@ aside{display:flex;flex-direction:column;gap:16px;min-width:0}
 .m-msg:empty{display:none}
 .foot{color:var(--muted);font-size:.8rem;max-width:80ch;margin:0}
 .foot code{font-family:var(--font-mono);font-size:.74rem}
+/* Điện năng */
+.energy{gap:14px}
+.energy-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:20px;align-items:start}
+@media (max-width:900px){.energy-grid{grid-template-columns:minmax(0,1fr)}}
+.e-main{display:flex;flex-direction:column;gap:12px;min-width:0}
+.e-readings strong{font-size:1.55rem}
+.e-chart{height:90px}
+.e-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;font-size:.84rem}
+.e-bar .seg button{padding:5px 10px;font-family:var(--font-mono);font-size:.8rem}
+.e-clock{color:var(--muted);font-variant-numeric:tabular-nums}
+.e-note{margin:0;color:var(--muted);font-size:.78rem}
+.e-table{min-width:0}
+.e-table td{vertical-align:middle}
+.e-table td small{display:block;color:var(--muted);font-size:.74rem}
+.e-table input{width:76px;padding:4px 6px;border-radius:6px;border:1px solid var(--line);background:var(--tile);color:var(--ink);font:inherit;font-size:.82rem;font-variant-numeric:tabular-nums}
+.e-num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.e-on{color:var(--amber);font-weight:600}
+.e-share{height:6px;border-radius:999px;background:var(--tile);border:1px solid var(--line);overflow:hidden;margin-top:4px;min-width:60px}
+.e-share i{display:block;height:100%;width:0;background:var(--amber)}
+@media (max-width:520px){
+  .e-table th,.e-table td{padding:6px 4px}
+  .e-table th{font-size:.64rem;letter-spacing:.03em}
+  .e-table input{width:54px;padding:4px}
+  .e-share{min-width:44px}
+}
 </style>
 
 </head>
@@ -354,6 +379,42 @@ aside{display:flex;flex-direction:column;gap:16px;min-width:0}
       </section>
     </aside>
   </div>
+
+  <section class="card energy" aria-labelledby="e-title">
+    <div class="model-head">
+      <h2 id="e-title">Điện năng tiêu thụ (giả lập)</h2>
+      <p>Trạng thái bật/tắt lúc này (mô phỏng hoặc mạch thật) nhân với công suất giả định của từng thiết bị, cộng dồn khi trang đang mở.</p>
+    </div>
+    <div class="energy-grid">
+      <div class="e-main">
+        <div class="readings e-readings">
+          <div class="reading"><small>Công suất lúc này</small><strong id="e-now">0<em>W</em></strong></div>
+          <div class="reading"><small>Đã dùng</small><strong id="e-used">0<em>kWh</em></strong></div>
+          <div class="reading"><small>Ước tính 30 ngày</small><strong id="e-month">—<em>kWh</em></strong></div>
+          <div class="reading"><small>Tiền điện 30 ngày</small><strong id="e-cost">—<em>đ</em></strong></div>
+        </div>
+        <svg class="spark e-chart" id="e-chart" viewBox="0 0 300 90" preserveAspectRatio="none" role="img" aria-label="Biểu đồ công suất gần đây"></svg>
+        <div class="legend"><span><i style="background:var(--amber)"></i><span id="e-span">Công suất (W)</span></span></div>
+        <div class="e-bar">
+          <span>Tua nhanh</span>
+          <div class="seg" role="group" aria-label="Tốc độ thời gian khi tính điện">
+            <button type="button" data-speed="1" aria-pressed="true">×1</button>
+            <button type="button" data-speed="60" aria-pressed="false">×60</button>
+            <button type="button" data-speed="1440" aria-pressed="false">×1440</button>
+          </div>
+          <span class="e-clock" id="e-clock">Đã tính 0 giây</span>
+          <button class="btn" type="button" id="e-reset">Tính lại từ đầu</button>
+        </div>
+        <p class="e-note">×60: mỗi giây tính như 1 phút; ×1440: mỗi giây tính như 24 phút. Tiền điện theo giá bán lẻ điện sinh hoạt bậc thang của EVN (Quyết định 1279/QĐ-BCT, từ 10/5/2025: 1.984 đến 3.460 đ/kWh), chưa gồm VAT. Sửa công suất trong bảng cho đúng thiết bị nhà bạn.</p>
+      </div>
+      <div class="table-wrap">
+        <table class="api-table e-table">
+          <thead><tr><th>Thiết bị</th><th>Công suất (W)</th><th>Lúc này</th><th>Đã dùng</th></tr></thead>
+          <tbody id="e-rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
 
   <section class="panel" aria-labelledby="panel-title">
     <div class="model-head"><h2 id="panel-title">Bảng điều khiển theo tầng</h2><p>Mỗi ô ghi đường dẫn Firebase và mã thiết bị trong API.</p></div>
@@ -629,8 +690,131 @@ function drawSpark(){
   svg.innerHTML = [0.25, 0.5, 0.75].map(f => `<line x1="0" x2="${W}" y1="${H*f}" y2="${H*f}" stroke="var(--line)" stroke-width="1" vector-effect="non-scaling-stroke"/>`).join('') + line('h', hl, hh, 'var(--accent)') + line('t', tl, th, 'var(--danger)');
 }
 
+/* ===== Điện năng (giả lập): công suất giả định × thời gian thiết bị bật ===== */
+// Giá bán lẻ điện sinh hoạt bậc thang, chưa VAT: Quyết định 1279/QĐ-BCT, áp dụng từ 10/5/2025
+const EVN_TIERS = [[50, 1984], [50, 2050], [100, 2380], [100, 2998], [100, 3350], [Infinity, 3460]];
+const GARAGE_RUN_S = 15;  // nhà thật: motor cửa cuốn chạy khoảng 15 giây mỗi lần mở hoặc đóng
+// Công suất mặc định là ước lượng cho nhà thật, sửa được trong bảng. Không có on(): tính theo lần chạy.
+const LOADS = [
+  { id:'light1', label:'Đèn tầng 1', w:20, on: t => get(t, 'floor_1/light_room_1') === false },
+  { id:'light2', label:'Đèn tầng 2', w:20, on: t => get(t, 'floor_2/light_room_2') === true },
+  { id:'light3', label:'Đèn tầng 3', w:20, on: t => get(t, 'light_room_3') === true },
+  { id:'wc1', label:'Đèn WC 1', w:9, on: t => get(t, 'floor_1/wc1_light') === true },
+  { id:'wc2', label:'Đèn WC 2', w:9, on: t => get(t, 'floor_1/wc2_light') === true },
+  { id:'garage', label:'Motor cửa cuốn', w:300, note:'Chạy ' + GARAGE_RUN_S + ' giây mỗi lần mở/đóng' },
+  { id:'alarm', label:'Báo trộm canh gác', w:2, on: t => get(t, 'floor_1/alarm_enabled_1') === true },
+  { id:'siren', label:'Còi báo trộm, báo khói', w:15, on: t => get(t, 'floor_1/alarm_triggered_1') === true || (get(t, 'floor_2/smoke_detected_2') === true && get(t, 'floor_2/buzzer_mute_2') !== true) },
+  { id:'base', label:'Mạch điều khiển', w:5, note:'6 ESP8266, LCD, cảm biến, luôn bật', on: () => true }
+];
+function tierCost(kwh){
+  let left = kwh, cost = 0;
+  for (const [size, price] of EVN_TIERS) { const k = Math.min(left, size); cost += k * price; left -= k; if (left <= 0) break; }
+  return cost;
+}
+const num = (n, d) => n.toLocaleString('vi-VN', { minimumFractionDigits: d, maximumFractionDigits: d });
+const fmtKwh = k => num(k, k < 1 ? 3 : k < 100 ? 2 : 1);
+const fmtWh = wh => wh < 1000 ? num(wh, wh < 10 ? 2 : 1) + ' Wh' : num(wh / 1000, 2) + ' kWh';
+function duration(s){
+  const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+  if (d) return d + ' ngày' + (h ? ' ' + h + ' giờ' : '');
+  if (h) return h + ' giờ' + (m ? ' ' + m + ' phút' : '');
+  return m ? m + ' phút' : Math.floor(s) + ' giây';
+}
+
+const Energy = {
+  speed: 1, simS: 0, last: 0, wh: {}, watts: {}, moves: 0, garage: undefined, samples: [],
+  init(){
+    const saved = store.get('iot3-energy') || {};
+    LOADS.forEach(l => {
+      const w = saved.w && saved.w[l.id];
+      this.watts[l.id] = typeof w === 'number' && w >= 0 ? w : l.w;
+      this.wh[l.id] = 0;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${l.label}${l.note ? `<small>${l.note}</small>` : ''}</td><td><input type="number" min="0" max="5000" step="1" inputmode="numeric" aria-label="Công suất ${l.label}, W"></td><td class="e-num" data-k="state"></td><td class="e-num"><span data-k="wh"></span><div class="e-share"><i></i></div></td>`;
+      const inp = tr.querySelector('input');
+      inp.value = this.watts[l.id];
+      inp.addEventListener('change', () => {
+        const v = Math.max(0, Math.min(5000, Number(inp.value) || 0));
+        inp.value = v;
+        this.step();  // phần trước đó tính theo công suất cũ
+        this.watts[l.id] = v;
+        this.save(); this.render();
+      });
+      l.row = tr;
+      $('#e-rows').appendChild(tr);
+    });
+    this.setSpeed([1, 60, 1440].includes(saved.speed) ? saved.speed : 1);
+    document.querySelectorAll('[data-speed]').forEach(b => b.addEventListener('click', () => { this.step(); this.setSpeed(Number(b.dataset.speed)); this.save(); this.render(); }));
+    $('#e-reset').addEventListener('click', () => this.reset());
+    this.last = performance.now();
+    setInterval(() => { this.step(); this.sample(); this.render(); }, 1000);
+    this.render();
+  },
+  save(){ store.set('iot3-energy', { w: this.watts, speed: this.speed }); },
+  setSpeed(s){ this.speed = s; document.querySelectorAll('[data-speed]').forEach(b => b.setAttribute('aria-pressed', Number(b.dataset.speed) === s)); },
+  reset(){ this.step(); this.simS = 0; this.moves = 0; this.samples = []; LOADS.forEach(l => { this.wh[l.id] = 0; }); this.render(); },
+  power(){ return LOADS.reduce((p, l) => p + (l.on && l.on(tree) ? this.watts[l.id] : 0), 0); },
+  // Cộng dồn từ lần trước tới giờ theo trạng thái đang có. Gọi trước khi trạng thái đổi, nên dù trình
+  // duyệt làm chậm bộ hẹn giờ (tab bị ẩn) thì vẫn tính đúng.
+  step(){
+    const now = performance.now(), dt = Math.min(3600, (now - this.last) / 1000) * this.speed;
+    this.last = now;
+    if (!(dt > 0)) return;
+    this.simS += dt;
+    LOADS.forEach(l => { if (l.on && l.on(tree)) this.wh[l.id] += this.watts[l.id] * dt / 3600; });
+  },
+  onTree(t){
+    const s = get(t, 'floor_1/garage/status');
+    if (s === 'open' || s === 'closed') {
+      if (this.garage && s !== this.garage) { this.moves++; this.wh.garage += this.watts.garage * GARAGE_RUN_S / 3600; }
+      this.garage = s;
+    }
+    this.render();
+  },
+  newSource(){ this.garage = undefined; },  // đổi mô phỏng ↔ mạch thật: không tính là cửa vừa chạy
+  // Mỗi mẫu: công suất và thời điểm (giây đã tính), để biểu đồ đúng cả khi đổi tốc độ giữa chừng
+  sample(){ this.samples.push({ p: this.power(), s: this.simS }); if (this.samples.length > 120) this.samples.shift(); },
+  render(){
+    const p = this.power(), total = LOADS.reduce((a, l) => a + this.wh[l.id], 0), kwh = total / 1000;
+    $('#e-now').innerHTML = num(p, 0) + '<em>W</em>';
+    $('#e-used').innerHTML = fmtKwh(kwh) + '<em>kWh</em>';
+    if (this.simS >= 60) {
+      const month = kwh / this.simS * 30 * 86400;  // giữ mức dùng trung bình đã tính trong 30 ngày
+      $('#e-month').innerHTML = fmtKwh(month) + '<em>kWh</em>';
+      $('#e-cost').innerHTML = num(Math.round(tierCost(month)), 0) + '<em>đ</em>';
+    } else {
+      $('#e-month').innerHTML = '—<em>kWh</em>';
+      $('#e-cost').innerHTML = '—<em>đ</em>';
+    }
+    $('#e-clock').textContent = 'Đã tính ' + duration(this.simS);
+    const s = this.samples, span = s.length > 1 ? s[s.length - 1].s - s[0].s : 0;
+    $('#e-span').textContent = 'Công suất (W), ' + duration(span) + ' gần nhất';
+    LOADS.forEach(l => {
+      const on = !!(l.on && l.on(tree)), st = l.row.querySelector('[data-k="state"]');
+      st.textContent = l.on ? (on ? num(this.watts[l.id], 0) + ' W' : 'Tắt') : this.moves + ' lần chạy';
+      st.classList.toggle('e-on', on);
+      l.row.querySelector('[data-k="wh"]').textContent = fmtWh(this.wh[l.id]);
+      l.row.querySelector('.e-share i').style.width = (total ? this.wh[l.id] / total * 100 : 0).toFixed(1) + '%';
+    });
+    this.draw();
+  },
+  draw(){
+    const svg = $('#e-chart'), W = 300, H = 90, P = 4, s = this.samples;
+    const span = s.length > 1 ? s[s.length - 1].s - s[0].s : 0;
+    if (!(span > 0)) { svg.innerHTML = ''; return; }
+    const hi = Math.max(10, ...s.map(v => v.p)) * 1.15;
+    const x = i => P + (s[i].s - s[0].s) / span * (W - 2*P), y = v => H - P - v / hi * (H - 2*P);
+    let d = 'M' + x(0).toFixed(1) + ' ' + y(s[0].p).toFixed(1);
+    for (let i = 1; i < s.length; i++) d += ' H' + x(i).toFixed(1) + ' V' + y(s[i].p).toFixed(1);
+    svg.innerHTML = [0.25, 0.5, 0.75].map(f => `<line x1="0" x2="${W}" y1="${H*f}" y2="${H*f}" stroke="var(--line)" stroke-width="1" vector-effect="non-scaling-stroke"/>`).join('')
+      + `<path d="${d} V${H - P} H${P} Z" fill="var(--amber)" fill-opacity="0.12" stroke="none"/><path d="${d}" fill="none" stroke="var(--amber)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>`;
+  }
+};
+Energy.init();
+
 /* ===== Nhận dữ liệu mới ===== */
 function onTree(t){
+  Energy.step();  // tính phần điện của trạng thái cũ trước khi đổi
   tree = t || {};
   ALL.forEach(updateTile);
   const temp = get(tree, 'floor_1/temperature_1'), humi = get(tree, 'floor_1/humidity_1');
@@ -641,6 +825,7 @@ function onTree(t){
     if (!l || l.t !== temp || l.h !== humi) { hist.push({ t: temp, h: humi }); if (hist.length > 40) hist.shift(); drawSpark(); }
   }
   Model.update(tree);
+  Energy.onTree(tree);
   if (prev) RULES.forEach(([p, fn]) => { const a = get(prev, p), b = get(tree, p); if (a !== b && b !== undefined) { const r = fn(b, tree); if (r) log(r[0], r[1]); } });
   prev = clone(tree);
 }
@@ -791,7 +976,7 @@ document.querySelectorAll('[data-via]').forEach(b => b.addEventListener('click',
 async function goSim(){
   Api.stop();
   await Live.disconnect();
-  backend = Sim; prev = null; hist.length = 0; drawSpark();
+  backend = Sim; prev = null; hist.length = 0; drawSpark(); Energy.newSource();
   Sim.start();
   setPill('sim', 'Chế độ mô phỏng'); setSeg('sim');
   $('#sim-card').hidden = false; $('#connect').hidden = true;
@@ -824,7 +1009,7 @@ $('#connect-form').addEventListener('submit', async ev => {
   Sim.stop(); backend = null; setPill('wait', 'Đang kết nối…');
   try {
     await Live.connect(cfg, email, pass);
-    backend = Live; prev = null; hist.length = 0; drawSpark();
+    backend = Live; prev = null; hist.length = 0; drawSpark(); Energy.newSource();
     $('#f-pass').value = '';
     $('#connect').hidden = true; $('#sim-card').hidden = true; setSeg('live');
     log('Đã kết nối Firebase bằng ' + email, 'ok');
@@ -844,7 +1029,7 @@ async function connectApi(){
   Sim.stop(); await Live.disconnect(); backend = null; setPill('wait', 'Đang gọi API…');
   try {
     const j = await Api.connect(base, key);
-    backend = Api; prev = null; hist.length = 0; drawSpark();
+    backend = Api; prev = null; hist.length = 0; drawSpark(); Energy.newSource();
     onTree(j.home || {});
     Api.start();
     $('#connect').hidden = true; $('#sim-card').hidden = true; setSeg('live');
